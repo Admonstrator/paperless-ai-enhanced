@@ -208,7 +208,8 @@ async function processDocument(doc, existingTags, existingCorrespondentList, exi
   ]);
 
   if (!content || content.length < MIN_CONTENT_LENGTH) {
-    console.log(`[DEBUG] Document ${doc.id} has insufficient content (${content?.length || 0} chars, minimum: ${MIN_CONTENT_LENGTH}), skipping analysis`);
+    console.log(`[DEBUG] Document ${doc.id} has insufficient content (${content?.length || 0} chars, minimum: ${MIN_CONTENT_LENGTH}), marking as processed to prevent repeated scanning`);
+    await documentModel.addProcessedDocument(doc.id, doc.title);
     return null;
   }
 
