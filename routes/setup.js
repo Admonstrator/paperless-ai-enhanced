@@ -1442,11 +1442,12 @@ router.post('/api/reset-documents', async (req, res) => {
 /**
  * @swagger
  * /api/history/validate:
- *   post:
- *     summary: Validate history entries against Paperless-ngx
+ *   get:
+ *     summary: Validate history entries against Paperless-ngx (Server-Sent Events)
  *     description: |
  *       Checks each history entry stored locally and verifies the corresponding document still exists in Paperless-ngx.
- *       Returns a list of entries that no longer exist and can be removed from the local history.
+ *       Uses Server-Sent Events (SSE) to stream real-time progress updates.
+ *       Returns progress updates and final list of missing documents.
  *     tags:
  *       - Documents
  *       - API
@@ -1455,43 +1456,21 @@ router.post('/api/reset-documents', async (req, res) => {
  *       - ApiKeyAuth: []
  *     responses:
  *       200:
- *         description: Validation completed successfully
+ *         description: Validation in progress (SSE stream)
  *         content:
- *           application/json:
+ *           text/event-stream:
  *             schema:
- *               type: object
- *               properties:
- *                 missing:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       document_id:
- *                         type: integer
- *                       title:
- *                         type: string
+ *               type: string
+ *               example: |
+ *                 data: {"type":"progress","current":50,"total":100,"missing":3,"percentage":50}
+ *                 
+ *                 data: {"type":"complete","missing":[{"document_id":123,"title":"Test Doc"}]}
  *       401:
  *         description: Unauthorized - authentication required
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Authentication required"
  *       500:
- *         description: Server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Error validating history"
+ *         description: Server error during validation
  */
-router.post('/api/history/validate', async (req, res) => {
+router.get('/api/history/validate', async (req, res) => {
   try {
     // Set headers for Server-Sent Events
     res.setHeader('Content-Type', 'text/event-stream');
