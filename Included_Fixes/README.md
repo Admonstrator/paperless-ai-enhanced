@@ -18,6 +18,12 @@ Each subdirectory represents an integrated fix with:
 | [#772](PR-772-infinite-retry-fix/) | Fix infinite retry loop | ✅ Merged | 2025-12-03 |
 | [#747](PR-747-history-cleanup/) | History validation tool | ✅ Merged | 2025-12-03 |
 
+### Performance Optimizations
+
+| ID | Title | Status | Integration Date |
+|----|-------|--------|------------------|
+| [PERF-001](PERF-001-history-pagination/) | History table SQL pagination & caching | ✅ Applied | 2025-12-03 |
+
 ### Community Patches
 
 | ID | Title | Status | Integration Date |
