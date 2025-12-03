@@ -1,47 +1,72 @@
-# Use a slim Node.js (LTS) image as base
-FROM node:22-slim
+# Stage 1: Build stage for Python dependencies
+FROM python:3.11-slim AS python-builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    make && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment and install Python dependencies
+COPY requirements.txt .
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    find /opt/venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -name "*.pyc" -delete && \
+    find /opt/venv -name "*.pyo" -delete && \
+    find /opt/venv -name "*.dist-info" -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Stage 2: Build stage for Node.js dependencies
+FROM node:23-slim AS node-builder
+
+WORKDIR /build
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm ci --only=production && \
+    npm cache clean --force && \
+    rm -rf /root/.npm
+
+# Stage 3: Final runtime stage
+FROM node:23-slim
 
 WORKDIR /app
 
-# Install system dependencies and clean up in single layer
+# Install only runtime dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
-    python3-pip \
-    python3-venv \
-    curl && \
+    curl \
+    ca-certificates && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install PM2 process manager globally
-RUN npm install pm2 -g
+# Install PM2 globally
+RUN npm install pm2 -g && npm cache clean --force
 
-# Install Python dependencies for RAG service in a virtual environment
-COPY requirements.txt /app/
-RUN python3 -m venv /app/venv
+# Copy Python virtual environment from builder
+COPY --from=python-builder /opt/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    find /app/venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
-    find /app/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
-    find /app/venv -name "*.pyc" -delete && \
-    find /app/venv -name "*.pyo" -delete
 
-# Copy package files for dependency installation
-COPY package*.json ./
+# Copy Node.js dependencies from builder
+COPY --from=node-builder /build/node_modules ./node_modules
 
-# Install node dependencies with clean install
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy only necessary application files
-COPY server.js main.py start-services.sh ./
-COPY config ./config/
-COPY models ./models/
-COPY routes ./routes/
-COPY services ./services/
-COPY views ./views/
-COPY public ./public/
-COPY schemas.js swagger.js ecosystem.config.js ./
+# Copy application files
+COPY --chown=node:node server.js main.py start-services.sh ./
+COPY --chown=node:node config ./config/
+COPY --chown=node:node models ./models/
+COPY --chown=node:node routes ./routes/
+COPY --chown=node:node services ./services/
+COPY --chown=node:node views ./views/
+COPY --chown=node:node public ./public/
+COPY --chown=node:node schemas.js swagger.js ecosystem.config.js package.json ./
 
 # Make startup script executable
 RUN chmod +x start-services.sh
@@ -49,7 +74,10 @@ RUN chmod +x start-services.sh
 # Configure persistent data volume
 VOLUME ["/app/data"]
 
-# Configure application port - aber der tatsächliche Port wird durch PAPERLESS_AI_PORT bestimmt
+# Switch to non-root user
+USER node
+
+# Configure application port
 EXPOSE ${PAPERLESS_AI_PORT:-3000}
 
 # Add health check with dynamic port
