@@ -13,6 +13,11 @@ on:
         required: true
         default: true
         type: boolean
+      build_lite_image:
+        description: 'Also build Lite image (without RAG, smaller size)'
+        required: false
+        default: true
+        type: boolean
       build_rag_image:
         description: 'Also build RAG service image (Dockerfile.rag)'
         required: false
@@ -40,45 +45,77 @@ jobs:
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
-        with:
-          images: admonstrator/paperless-ai-enhanced
-          tags: |
-            type=raw,value=${{ inputs.tag }}
-      
-      - name: Build and push main Docker image
+      - name: Build and push Full Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: ${{ inputs.push_to_registry }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            admonstrator/paperless-ai-enhanced:${{ inputs.tag }}
+            admonstrator/paperless-ai-enhanced:${{ inputs.tag }}-full
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
       
-      - name: Build and push RAG service image
-        if: ${{ inputs.build_rag_image }}
+      - name: Build and push Lite Docker image
+        if: ${{ inputs.build_lite_image }}
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.rag
+          file: ./Dockerfile.lite
           push: ${{ inputs.push_to_registry }}
-          tags: admonstrator/paperless-ai-enhanced-rag:${{ inputs.tag }}
+          tags: admonstrator/paperless-ai-enhanced:${{ inputs.tag }}-lite
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-      
       - name: Image build summary
         run: |
           echo "### Docker Build Summary :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Main Image" >> $GITHUB_STEP_SUMMARY
+          echo "#### Full Image (with RAG)" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: admonstrator/paperless-ai-enhanced" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag**: ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags**: ${{ inputs.tag }}, ${{ inputs.tag }}-full" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size**: ~2.5-2.7 GB" >> $GITHUB_STEP_SUMMARY
           echo "- **Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
           echo "- **Pushed**: ${{ inputs.push_to_registry }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.build_lite_image }}" = "true" ]; then
+            echo "#### Lite Image (without RAG)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Image**: admonstrator/paperless-ai-enhanced" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: ${{ inputs.tag }}-lite" >> $GITHUB_STEP_SUMMARY
+            echo "- **Size**: ~500-700 MB" >> $GITHUB_STEP_SUMMARY
+            echo "- **Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ inputs.build_rag_image }}" = "true" ]; then
+            echo "#### RAG Service Image" >> $GITHUB_STEP_SUMMARY
+            echo "- **Image**: admonstrator/paperless-ai-enhanced-rag" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ inputs.push_to_registry }}" = "true" ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Images successfully pushed to Docker Hub**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "# Full version (with RAG)" >> $GITHUB_STEP_SUMMARY
+            echo "docker pull admonstrator/paperless-ai-enhanced:${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ inputs.build_lite_image }}" = "true" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "# Lite version (without RAG, smaller)" >> $GITHUB_STEP_SUMMARY
+              echo "docker pull admonstrator/paperless-ai-enhanced:${{ inputs.tag }}-lite" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "${{ inputs.build_rag_image }}" = "true" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "# RAG service only" >> $GITHUB_STEP_SUMMARY
+              echo "docker pull admonstrator/paperless-ai-enhanced-rag:${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ Images built locally only (not pushed)" >> $GITHUB_STEP_SUMMARY
+          fiho "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.build_rag_image }}" = "true" ]; then
             echo "#### RAG Service Image" >> $GITHUB_STEP_SUMMARY
             echo "- **Image**: admonstrator/paperless-ai-enhanced-rag" >> $GITHUB_STEP_SUMMARY
