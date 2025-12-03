@@ -1258,69 +1258,44 @@ router.get('/api/history/load-progress', isAuthenticated, async (req, res) => {
     // Small delay to ensure first message is received
     await new Promise(resolve => setTimeout(resolve, 50));
     
-    // Step 2: Load history entries
+    // Step 2: Load filter data only (not all documents)
     sendProgress({ 
       type: 'progress', 
       percentage: 10, 
       step: 1,
-      totalSteps: 3,
-      message: 'Loading history entries...' 
-    });
-    
-    const allDocs = await documentModel.getAllHistory();
-    
-    sendProgress({ 
-      type: 'progress', 
-      percentage: 33, 
-      step: 1,
-      totalSteps: 3,
-      message: `Loaded ${allDocs.length} document entries`,
-      details: { documents: allDocs.length }
-    });
-    
-    // Step 3: Load tags
-    sendProgress({ 
-      type: 'progress', 
-      percentage: 40, 
-      step: 2,
-      totalSteps: 3,
+      totalSteps: 2,
       message: 'Loading tags from Paperless...' 
     });
     
-    const allTags = await paperlessService.getTags();
+    const allTags = await getCachedTags();
     
     sendProgress({ 
       type: 'progress', 
-      percentage: 66, 
-      step: 2,
-      totalSteps: 3,
+      percentage: 50, 
+      step: 1,
+      totalSteps: 2,
       message: `Loaded ${allTags.length} tags`,
-      details: { documents: allDocs.length, tags: allTags.length }
+      details: { tags: allTags.length }
     });
     
-    // Step 4: Processing data
+    // Step 3: Load correspondents from DB (fast query)
     sendProgress({ 
       type: 'progress', 
-      percentage: 80, 
-      step: 3,
-      totalSteps: 3,
-      message: `Processing ${allDocs.length} documents with ${allTags.length} tags...`,
-      details: { documents: allDocs.length, tags: allTags.length }
+      percentage: 70, 
+      step: 2,
+      totalSteps: 2,
+      message: 'Loading correspondents...' 
     });
     
-    // Give time for processing
-    await new Promise(resolve => setTimeout(resolve, 100));
+    const allCorrespondents = await documentModel.getDistinctCorrespondents();
+    const docCount = await documentModel.getHistoryDocumentsCount();
     
-    // Step 5: Build filter data
-    const allCorrespondents = [...new Set(allDocs.map(doc => doc.correspondent))]
-      .filter(Boolean).sort();
-    
-    // Step 6: Complete with filter data
+    // Step 4: Complete with filter data
     sendProgress({ 
       type: 'complete', 
-      message: `Ready: ${allDocs.length} documents with ${allTags.length} tags`,
-      count: allDocs.length,
-      details: { documents: allDocs.length, tags: allTags.length },
+      message: `Ready: ${docCount} documents with ${allTags.length} tags`,
+      count: docCount,
+      details: { documents: docCount, tags: allTags.length },
       filters: {
         tags: allTags,
         correspondents: allCorrespondents
@@ -1341,6 +1316,18 @@ router.get('/api/history/load-progress', isAuthenticated, async (req, res) => {
   }
 });
 
+// Tag cache with 5-minute TTL
+let tagCache = { data: null, timestamp: 0, TTL: 5 * 60 * 1000 };
+
+async function getCachedTags() {
+  const now = Date.now();
+  if (!tagCache.data || (now - tagCache.timestamp) > tagCache.TTL) {
+    tagCache.data = await paperlessService.getTags();
+    tagCache.timestamp = now;
+  }
+  return tagCache.data;
+}
+
 router.get('/api/history', async (req, res) => {
   try {
     const draw = parseInt(req.query.draw);
@@ -1350,17 +1337,43 @@ router.get('/api/history', async (req, res) => {
     const tagFilter = req.query.tag || '';
     const correspondentFilter = req.query.correspondent || '';
 
-    // Get all documents
-    const allDocs = await documentModel.getAllHistory();
-    const allTags = await paperlessService.getTags();
-    const tagMap = new Map(allTags.map(tag => [tag.id, tag]));
+    // Get sort parameters
+    let sortColumn = 'created_at';
+    let sortDir = 'desc';
+    if (req.query.order && req.query.order[0]) {
+      const order = req.query.order[0];
+      sortColumn = req.query.columns[order.column].data;
+      sortDir = order.dir;
+    }
 
-    // Format and filter documents
-    let filteredDocs = allDocs.map(doc => {
+    // Use SQL-based pagination with filtering
+    const docs = await documentModel.getHistoryPaginated({
+      search,
+      tagFilter,
+      correspondentFilter,
+      sortColumn,
+      sortDir,
+      limit: length,
+      offset: start
+    });
+
+    // Get total counts
+    const totalCount = await documentModel.getHistoryDocumentsCount();
+    const filteredCount = await documentModel.getHistoryCountFiltered({
+      search,
+      tagFilter,
+      correspondentFilter
+    });
+
+    // Get cached tags
+    const allTags = await getCachedTags();
+    const tagMap = new Map(allTags.map(tag => [tag.id, tag]));
+    const baseURL = process.env.PAPERLESS_API_URL.replace(/\/api$/, '');
+
+    // Format documents with tag resolution
+    const formattedDocs = docs.map(doc => {
       const tagIds = doc.tags === '[]' ? [] : JSON.parse(doc.tags || '[]');
       const resolvedTags = tagIds.map(id => tagMap.get(parseInt(id))).filter(Boolean);
-      const baseURL = process.env.PAPERLESS_API_URL.replace(/\/api$/, '');
-
       resolvedTags.sort((a, b) => a.name.localeCompare(b.name));
 
       return {
@@ -1371,50 +1384,13 @@ router.get('/api/history', async (req, res) => {
         correspondent: doc.correspondent || 'Not assigned',
         link: `${baseURL}/documents/${doc.document_id}/`
       };
-    }).filter(doc => {
-      const matchesSearch = !search || 
-        doc.title.toLowerCase().includes(search.toLowerCase()) ||
-        doc.correspondent.toLowerCase().includes(search.toLowerCase()) ||
-        doc.tags.some(tag => tag.name.toLowerCase().includes(search.toLowerCase()));
-
-      const matchesTag = !tagFilter || doc.tags.some(tag => tag.id === parseInt(tagFilter));
-      const matchesCorrespondent = !correspondentFilter || doc.correspondent === correspondentFilter;
-
-      return matchesSearch && matchesTag && matchesCorrespondent;
     });
-
-    // Sort documents if requested
-    if (req.query.order) {
-      const order = req.query.order[0];
-      const column = req.query.columns[order.column].data;
-      const dir = order.dir === 'asc' ? 1 : -1;
-
-      filteredDocs.sort((a, b) => {
-        if (a[column] == null) return 1;
-        if (b[column] == null) return -1;
-        if (column === 'created_at') {
-          return dir * (new Date(a[column]) - new Date(b[column]));
-        }
-        if (column === 'document_id') {
-          return dir * (a[column] - b[column]);
-        }
-        if (column === 'tags') {
-          let min_len = (a[column].length < b[column].length)? a[column].length : b[column].length;
-          for(let i=0; i < min_len; i+=1) {
-            let cmp = a[column][i].name.localeCompare(b[column][i].name)
-            if(cmp !== 0) return dir * cmp;
-          }
-          return dir * (a[column].length - b[column].length);
-        }
-        return dir * a[column].localeCompare(b[column]);
-      });
-    }
 
     res.json({
       draw: draw,
-      recordsTotal: allDocs.length,
-      recordsFiltered: filteredDocs.length,
-      data: filteredDocs.slice(start, start + length)
+      recordsTotal: totalCount,
+      recordsFiltered: filteredCount,
+      data: formattedDocs
     });
   } catch (error) {
     console.error('[ERROR] loading history data:', error);

@@ -119,6 +119,40 @@ const getPaginatedHistoryDocuments = db.prepare(`
   LIMIT ? OFFSET ?
 `);
 
+// Prepared statement for filtered/sorted history with pagination
+const getHistoryPaginatedFiltered = db.prepare(`
+  SELECT * FROM history_documents
+  WHERE 1=1
+    AND (? = '' OR title LIKE ? OR correspondent LIKE ?)
+    AND (? = '' OR tags LIKE ?)
+    AND (? = '' OR correspondent = ?)
+  ORDER BY 
+    CASE WHEN ? = 'document_id' AND ? = 'asc' THEN document_id END ASC,
+    CASE WHEN ? = 'document_id' AND ? = 'desc' THEN document_id END DESC,
+    CASE WHEN ? = 'title' AND ? = 'asc' THEN title END ASC,
+    CASE WHEN ? = 'title' AND ? = 'desc' THEN title END DESC,
+    CASE WHEN ? = 'correspondent' AND ? = 'asc' THEN correspondent END ASC,
+    CASE WHEN ? = 'correspondent' AND ? = 'desc' THEN correspondent END DESC,
+    CASE WHEN ? = 'created_at' AND ? = 'asc' THEN created_at END ASC,
+    CASE WHEN ? = 'created_at' AND ? = 'desc' THEN created_at END DESC,
+    created_at DESC
+  LIMIT ? OFFSET ?
+`);
+
+const getHistoryCountFiltered = db.prepare(`
+  SELECT COUNT(*) as count FROM history_documents
+  WHERE 1=1
+    AND (? = '' OR title LIKE ? OR correspondent LIKE ?)
+    AND (? = '' OR tags LIKE ?)
+    AND (? = '' OR correspondent = ?)
+`);
+
+const getDistinctCorrespondents = db.prepare(`
+  SELECT DISTINCT correspondent FROM history_documents
+  WHERE correspondent IS NOT NULL AND correspondent != ''
+  ORDER BY correspondent
+`);
+
 const createProcessingStatus = db.prepare(`
   CREATE TABLE IF NOT EXISTS processing_status (
     id INTEGER PRIMARY KEY,
@@ -329,6 +363,63 @@ module.exports = {
       return getPaginatedHistoryDocuments.all(limit, offset);
     } catch (error) {
       console.error('[ERROR] getting paginated history:', error);
+      return [];
+    }
+  },
+
+  async getHistoryPaginated({ search = '', tagFilter = '', correspondentFilter = '', sortColumn = 'created_at', sortDir = 'desc', limit = 10, offset = 0 }) {
+    try {
+      // Prepare search pattern
+      const searchPattern = search ? `%${search}%` : '';
+      const tagPattern = tagFilter ? `%"${tagFilter}"%` : '';
+      
+      // Execute query with all parameters
+      const docs = getHistoryPaginatedFiltered.all(
+        searchPattern, searchPattern, searchPattern, // search in title and correspondent
+        tagPattern, tagPattern, // tag filter
+        correspondentFilter, correspondentFilter, // correspondent exact match
+        sortColumn, sortDir, // 1st sort option
+        sortColumn, sortDir, // 2nd sort option
+        sortColumn, sortDir, // 3rd sort option
+        sortColumn, sortDir, // 4th sort option
+        sortColumn, sortDir, // 5th sort option
+        sortColumn, sortDir, // 6th sort option
+        sortColumn, sortDir, // 7th sort option
+        sortColumn, sortDir, // 8th sort option
+        limit, offset
+      );
+      
+      return docs;
+    } catch (error) {
+      console.error('[ERROR] getting paginated filtered history:', error);
+      return [];
+    }
+  },
+
+  async getHistoryCountFiltered({ search = '', tagFilter = '', correspondentFilter = '' }) {
+    try {
+      const searchPattern = search ? `%${search}%` : '';
+      const tagPattern = tagFilter ? `%"${tagFilter}"%` : '';
+      
+      const result = getHistoryCountFiltered.get(
+        searchPattern, searchPattern, searchPattern,
+        tagPattern, tagPattern,
+        correspondentFilter, correspondentFilter
+      );
+      
+      return result.count;
+    } catch (error) {
+      console.error('[ERROR] getting filtered history count:', error);
+      return 0;
+    }
+  },
+
+  async getDistinctCorrespondents() {
+    try {
+      const results = getDistinctCorrespondents.all();
+      return results.map(row => row.correspondent).filter(Boolean);
+    } catch (error) {
+      console.error('[ERROR] getting distinct correspondents:', error);
       return [];
     }
   },
