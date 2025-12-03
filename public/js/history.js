@@ -38,11 +38,93 @@ class HistoryManager {
     }
 
     initialize() {
-        this.table = this.initializeDataTable();
-        this.initializeModals();
-        this.initializeResetButtons();
-        this.initializeFilters();
-        this.initializeSelectAll();
+        this.loadHistoryWithProgress()
+            .then(() => {
+                this.table = this.initializeDataTable();
+                this.initializeModals();
+                this.initializeResetButtons();
+                this.initializeFilters();
+                this.initializeSelectAll();
+            })
+            .catch((error) => {
+                console.error('Failed to load history:', error);
+                // Show error message to user and update accessibility state
+                const loadingIndicator = document.getElementById('historyLoadingIndicator');
+                const statusText = document.getElementById('historyLoadStatus');
+                const progressContainer = document.getElementById('historyProgressContainer');
+                
+                if (loadingIndicator) {
+                    loadingIndicator.style.display = 'block';
+                }
+                if (statusText) {
+                    statusText.textContent = 'Error loading history. Please refresh the page.';
+                }
+                if (progressContainer) {
+                    progressContainer.setAttribute('aria-label', 'Loading failed');
+                }
+            });
+    }
+
+    loadHistoryWithProgress() {
+        const loadingIndicator = document.getElementById('historyLoadingIndicator');
+        const tableContainer = document.getElementById('historyTableContainer');
+        const progressBar = document.getElementById('historyLoadProgress');
+        const progressContainer = document.getElementById('historyProgressContainer');
+        const statusText = document.getElementById('historyLoadStatus');
+
+        // Show loading state
+        loadingIndicator.style.display = 'block';
+        tableContainer.style.display = 'none';
+
+        // Use EventSource for real-time progress updates
+        const eventSource = new EventSource('/api/history/load-progress');
+
+        return new Promise((resolve, reject) => {
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'progress') {
+                    // Update progress bar
+                    const percentage = data.percentage || 0;
+                    progressBar.style.width = `${percentage}%`;
+                    // Update aria-valuenow for accessibility
+                    if (progressContainer) {
+                        progressContainer.setAttribute('aria-valuenow', percentage);
+                    }
+                    statusText.textContent = data.message || 'Loading...';
+                } 
+                else if (data.type === 'complete') {
+                    // Loading complete
+                    eventSource.close();
+                    progressBar.style.width = '100%';
+                    if (progressContainer) {
+                        progressContainer.setAttribute('aria-valuenow', 100);
+                    }
+                    statusText.textContent = 'Complete!';
+                    
+                    // Small delay to show completion
+                    setTimeout(() => {
+                        loadingIndicator.style.display = 'none';
+                        tableContainer.style.display = 'block';
+                        resolve();
+                    }, 300);
+                }
+                else if (data.type === 'error') {
+                    eventSource.close();
+                    // Don't hide loading indicator or show table - let catch handler manage error state
+                    reject(new Error(data.message || 'Loading failed'));
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('EventSource error:', error);
+                eventSource.close();
+                // Fallback: continue anyway
+                loadingIndicator.style.display = 'none';
+                tableContainer.style.display = 'block';
+                resolve();
+            };
+        });
     }
 
     initializeDataTable() {

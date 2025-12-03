@@ -1208,6 +1208,72 @@ router.get('/history', async (req, res) => {
  *                   type: string
  *                   example: "Error loading history data"
  */
+/**
+ * @swagger
+ * /api/history/load-progress:
+ *   get:
+ *     summary: Load history data with progress updates (Server-Sent Events)
+ *     description: |
+ *       Preloads history and tag data with real-time progress updates via SSE.
+ *       This endpoint should be called before displaying the history table to warm up the cache.
+ *       Requires authentication via JWT token or API key.
+ *     tags:
+ *       - Documents
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Loading in progress (SSE stream)
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               example: |
+ *                 data: {"type":"progress","percentage":10,"message":"Loading history entries..."}
+ *                 
+ *                 data: {"type":"complete","message":"Loaded 150 documents with 25 tags","count":150}
+ *       401:
+ *         description: Unauthorized - authentication required
+ */
+router.get('/api/history/load-progress', isAuthenticated, async (req, res) => {
+  try {
+    // Set headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    // Step 1: Load history entries
+    res.write(`data: ${JSON.stringify({ type: 'progress', percentage: 10, message: 'Loading history entries...' })}\n\n`);
+    const allDocs = await documentModel.getAllHistory();
+    
+    // Step 2: Load tags
+    res.write(`data: ${JSON.stringify({ type: 'progress', percentage: 50, message: 'Loading tags data...' })}\n\n`);
+    const allTags = await paperlessService.getTags();
+    
+    // Step 3: Processing data
+    res.write(`data: ${JSON.stringify({ type: 'progress', percentage: 80, message: `Processing ${allDocs.length} documents...` })}\n\n`);
+    
+    // Step 4: Complete
+    res.write(`data: ${JSON.stringify({ 
+      type: 'complete', 
+      message: `Loaded ${allDocs.length} documents with ${allTags.length} tags`,
+      count: allDocs.length
+    })}\n\n`);
+    res.end();
+  } catch (error) {
+    console.error('[ERROR] loading history with progress:', error);
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Error loading history' })}\n\n`);
+    } else {
+      res.status(500).json({ error: 'Error loading history' });
+    }
+    res.end();
+  }
+});
+
 router.get('/api/history', async (req, res) => {
   try {
     const draw = parseInt(req.query.draw);

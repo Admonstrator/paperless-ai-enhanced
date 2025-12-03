@@ -122,8 +122,27 @@
                     </div>
                 </div>
 
+                <!-- Loading Indicator -->
+                <div id="historyLoadingIndicator" class="material-card mb-6">
+                    <div class="text-center py-8">
+                        <div class="mb-4">
+                            <i class="fas fa-spinner fa-spin text-5xl text-blue-500" aria-label="Loading" role="status"></i>
+                        </div>
+                        <div class="mb-2 text-xl font-semibold">Loading history...</div>
+                        <div id="historyProgressContainer" class="w-full max-w-md mx-auto bg-gray-200 rounded-full h-3 mb-3"
+                             role="progressbar"
+                             aria-valuemin="0"
+                             aria-valuemax="100"
+                             aria-valuenow="0"
+                             aria-label="Loading progress">
+                            <div id="historyLoadProgress" class="bg-blue-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div id="historyLoadStatus" class="text-sm text-gray-600" aria-live="polite">Preparing to load history data...</div>
+                    </div>
+                </div>
+
                 <!-- DataTable -->
-                <div class="material-card">
+                <div id="historyTableContainer" class="material-card" style="display: none;">
                     <div class="overflow-x-auto">
                         <table id="historyTable" class="w-full">
                             <thead>
