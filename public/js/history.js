@@ -330,16 +330,95 @@ class HistoryManager {
             // Show a loading state in the modal while we validate
             this.showModal(this.validateModal);
             const container = document.getElementById('validateResults');
-            container.innerHTML = '<div>Checking history entries...</div>';
+            
+            // Show progress indicator
+            container.innerHTML = `
+                <div class="text-center py-6">
+                    <div class="mb-4">
+                        <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
+                    </div>
+                    <div class="mb-2 font-medium">Validating history entries...</div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                        <div id="validateProgress" class="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <div id="validateStatus" class="text-sm text-gray-600">Starting validation...</div>
+                </div>
+            `;
 
-            const response = await fetch('/api/history/validate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+            // Simulate progress updates (since we don't have real-time updates from backend)
+            const progressBar = document.getElementById('validateProgress');
+            const statusText = document.getElementById('validateStatus');
+            
+            let progress = 0;
+    renderValidateResults(missing) {
+        const container = document.getElementById('validateResults');
+        if (!container) return;
+
+        if (!missing || missing.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-check-circle text-5xl text-green-500 mb-3"></i>
+                    <div class="text-lg font-medium text-green-600">All history entries are valid!</div>
+                    <div class="text-sm text-gray-500 mt-2">No missing documents found.</div>
+                </div>
+            `;
+            
+            // Hide the "Remove Missing" button since there's nothing to remove
+            document.getElementById('confirmRemoveMissing').style.display = 'none';
+            return;
+        }
+
+        // Show the "Remove Missing" button
+        document.getElementById('confirmRemoveMissing').style.display = 'block';
+
+        const list = missing.map(item => {
+            return `
+                <div class="flex items-center justify-between p-2 border-b hover:bg-gray-50">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" value="${item.document_id}" class="rounded" />
+                        <span class="font-medium">${item.title || ('Document ' + item.document_id)}</span>
+                    </label>
+                    <span class="text-sm text-gray-500">ID: ${item.document_id}</span>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="mb-3">
+                <div class="flex items-center gap-2 text-yellow-600 mb-2">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span class="font-medium">${missing.length} missing document(s) found</span>
+                </div>
+                <p class="text-sm text-gray-600">These documents exist in history but not in Paperless-ngx. Select which ones to remove:</p>
+            </div>
+            <div class="mb-3">
+                <label class="flex items-center gap-2 cursor-pointer p-2 bg-gray-100 rounded">
+                    <input type="checkbox" id="selectAllMissing" class="rounded" />
+                    <span class="font-medium">Select All</span>
+                </label>
+            </div>
+            ${list}
+        `;
+        
+        // Add select all functionality
+        const selectAllCheckbox = document.getElementById('selectAllMissing');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(#selectAllMissing)');
+                checkboxes.forEach(cb => cb.checked = e.target.checked);
             });
-
+        }
+    }       
             if (!response.ok) {
                 throw new Error('Failed to validate history');
             }
+
+            // Complete the progress bar
+            progressBar.style.width = '100%';
+            statusText.textContent = 'Validation complete!';
+            
+            // Small delay to show completion
+            await new Promise(resolve => setTimeout(resolve, 300));
 
             const data = await response.json();
             this.renderValidateResults(data.missing || []);
