@@ -31,6 +31,12 @@ Each subdirectory represents an integrated fix with:
 | [DEP-001](DEP-001-remove-sqlite3/) | Remove unused sqlite3 dependency | ✅ Applied | 2025-12-03 |
 | [DOCKER-001](DOCKER-001-optimize-images/) | Docker image optimization | ✅ Applied | 2025-12-03 |
 
+### Security Fixes
+
+| ID | Title | Status | Integration Date |
+|----|-------|--------|------------------|
+| [SEC-001](SEC-001-ssrf-code-injection/) | SSRF & Code Injection Fixes | ✅ Applied | 2025-12-03 |
+
 ## 🚀 How to Use
 
 Each fix directory contains:
