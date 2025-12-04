@@ -48,6 +48,10 @@ This is a **community-maintained integration fork** that:
 - 📋 Detailed fix documentation in `Included_Fixes/`
 - 🔗 Swagger API documentation improvements
 
+**Experimental Builds**:
+- 🌙 **[Nightly Builds](docs/NIGHTLY.md)**: Test bleeding-edge features from development branches
+- 🧪 PERF-002 optimizations available as `nightly` tag (Docker Hub & GHCR)
+
 **UI/UX**:
 - 🌓 Enhanced dark mode support
 - 📱 Responsive mobile menu

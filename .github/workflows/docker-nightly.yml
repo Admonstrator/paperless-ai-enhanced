@@ -1,0 +1,182 @@
+name: Docker Nightly Build
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+  
+  # Automatic nightly builds (every day at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * *'
+  
+  # Build on push to PERF-002 branch
+  push:
+    branches:
+      - PERF-002-optimize-caching-strategy
+
+env:
+  REGISTRY_DOCKERHUB: docker.io
+  REGISTRY_GHCR: ghcr.io
+  IMAGE_NAME_DOCKERHUB: admonstrator/paperless-ai-patched
+  IMAGE_NAME_GHCR: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-push-nightly:
+    name: Build & Push Nightly (Lite)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: PERF-002-optimize-caching-strategy
+      
+      - name: Set lowercase repository name
+        id: repo
+        run: |
+          echo "name=${GITHUB_REPOSITORY@L}" >> $GITHUB_OUTPUT
+      
+      - name: Aggressive cleanup
+        run: |
+          # Remove Java (JDKs)
+          sudo rm -rf /usr/lib/jvm
+
+          # Remove .NET SDKs
+          sudo rm -rf /usr/share/dotnet
+
+          # Remove Swift toolchain
+          sudo rm -rf /usr/share/swift
+
+          # Remove Haskell (GHC)
+          sudo rm -rf /usr/local/.ghcup
+
+          # Remove Android SDK/NDK
+          sudo rm -rf /usr/local/lib/android
+
+          # Remove Google Cloud SDK
+          sudo rm -rf /usr/lib/google-cloud-sdk
+
+          # Remove Microsoft Edge
+          sudo rm -rf /usr/bin/microsoft-edge*
+
+          # Remove Firefox
+          sudo rm -rf /usr/bin/firefox
+
+          # Docker images cleanup
+          docker system prune -af
+
+          # Show available space
+          df -h
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Generate build timestamp
+        id: timestamp
+        run: |
+          BUILD_DATE=$(date -u +'%Y%m%d')
+          echo "date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "Nightly build date: $BUILD_DATE"
+      
+      - name: Extract metadata for Docker Hub
+        id: meta-dockerhub
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME_DOCKERHUB }}
+          tags: |
+            type=raw,value=nightly
+            type=raw,value=nightly-lite
+            type=raw,value=nightly-${{ steps.timestamp.outputs.date }}
+            type=raw,value=perf-002-latest
+      
+      - name: Extract metadata for GHCR
+        id: meta-ghcr
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME_GHCR }}
+          tags: |
+            type=raw,value=nightly
+            type=raw,value=nightly-lite
+            type=raw,value=nightly-${{ steps.timestamp.outputs.date }}
+            type=raw,value=perf-002-latest
+      
+      - name: Build and push Lite image to Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.lite
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-dockerhub.outputs.tags }}
+          labels: ${{ steps.meta-dockerhub.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME_DOCKERHUB }}:nightly-buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME_DOCKERHUB }}:nightly-buildcache,mode=max
+          build-args: |
+            BUILD_DATE=${{ steps.timestamp.outputs.date }}
+            VCS_REF=${{ github.sha }}
+            VERSION=nightly-${{ steps.timestamp.outputs.date }}
+      
+      - name: Build and push Lite image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.lite
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-ghcr.outputs.tags }}
+          labels: ${{ steps.meta-ghcr.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME_GHCR }}:nightly-buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME_GHCR }}:nightly-buildcache,mode=max
+          build-args: |
+            BUILD_DATE=${{ steps.timestamp.outputs.date }}
+            VCS_REF=${{ github.sha }}
+            VERSION=nightly-${{ steps.timestamp.outputs.date }}
+      
+      - name: Generate summary
+        run: |
+          echo "## 🌙 Nightly Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Hub Images" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_DOCKERHUB }}:nightly\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_DOCKERHUB }}:nightly-lite\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_DOCKERHUB }}:nightly-${{ steps.timestamp.outputs.date }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_DOCKERHUB }}:perf-002-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### GHCR Images" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_GHCR }}:nightly\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_GHCR }}:nightly-lite\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_GHCR }}:nightly-${{ steps.timestamp.outputs.date }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME_GHCR }}:perf-002-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Docker Hub" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME_DOCKERHUB }}:nightly" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# GitHub Container Registry" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME_GHCR }}:nightly" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** PERF-002-optimize-caching-strategy" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Date:** ${{ steps.timestamp.outputs.date }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚠️ Warning" >> $GITHUB_STEP_SUMMARY
+          echo "This is a nightly build from the PERF-002 optimization branch." >> $GITHUB_STEP_SUMMARY
+          echo "It includes experimental caching improvements that are not yet merged to main." >> $GITHUB_STEP_SUMMARY
+          echo "Use for testing purposes only!" >> $GITHUB_STEP_SUMMARY
