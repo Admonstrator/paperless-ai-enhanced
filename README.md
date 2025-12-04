@@ -54,7 +54,23 @@ This is a **community-maintained integration fork** that:
 - ⏱️ Real-time progress bars with step counts
 - 🎨 Improved loading indicators
 
-Full changelog: [`Included_Fixes/README.md`](Included_Fixes/README.md)
+### 📋 Integrated Fixes
+
+All fixes are documented in [`Included_Fixes/`](Included_Fixes/) with detailed implementation notes:
+
+| Category | Fix ID | Description | Status |
+|----------|--------|-------------|--------|
+| **Upstream PRs** | [PR-772](Included_Fixes/PR-772-infinite-retry-fix/) | Fix infinite retry loop | ✅ Merged |
+| | [PR-747](Included_Fixes/PR-747-history-cleanup/) | History validation tool | ✅ Merged |
+| **Performance** | [PERF-001](Included_Fixes/PERF-001-history-pagination/) | SQL pagination & tag caching | ✅ Applied |
+| **Security** | [SEC-001](Included_Fixes/SEC-001-ssrf-code-injection/) | SSRF & code injection fixes | ✅ Applied |
+| **Docker** | [DOCKER-001](Included_Fixes/DOCKER-001-optimize-images/) | Optimized Docker images | ✅ Applied |
+| **Dependencies** | [DEP-001](Included_Fixes/DEP-001-remove-sqlite3/) | Remove unused sqlite3 | ✅ Applied |
+| **CI/CD** | [CI-001](Included_Fixes/CI-001-auto-version-tagging/) | Automatic version tagging | ✅ Applied |
+
+Full details: [`Included_Fixes/README.md`](Included_Fixes/README.md)
+
+---
 
 It enables **fully automated document workflows**, **contextual chat**, and **powerful customization** — all via an intuitive web interface.
 
