@@ -1,0 +1,344 @@
+<%- include('layout', { title: title, body: `
+<div class="container mx-auto px-4 py-8">
+  <div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Cache Administration</h1>
+      <p class="text-gray-600 dark:text-gray-400">Manage metadata cache, monitor performance, and control document scanning</p>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <button onclick="refreshCache()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300 flex items-center justify-center">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        Refresh Cache
+      </button>
+      
+      <button onclick="clearCache()" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300 flex items-center justify-center">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+        </svg>
+        Clear Cache
+      </button>
+      
+      <button onclick="triggerScan()" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300 flex items-center justify-center">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+        </svg>
+        Trigger Scan
+      </button>
+      
+      <button onclick="resetStats()" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300 flex items-center justify-center">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+        </svg>
+        Reset Stats
+      </button>
+    </div>
+
+    <!-- Configuration Info -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Configuration</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Cache TTL</p>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white"><%= cacheTTL %> min</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Cache Refresh Interval</p>
+          <p class="text-lg font-semibold text-gray-900 dark:text-white"><%= cacheRefreshInterval %></p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Incremental Scanning</p>
+          <p class="text-2xl font-bold <%= incrementalScanEnabled ? 'text-green-600' : 'text-red-600' %>">
+            <%= incrementalScanEnabled ? 'Enabled' : 'Disabled' %>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overall Statistics -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Overall Performance</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-400">Hit Rate</p>
+          <p class="text-3xl font-bold text-green-600" id="hitRate"><%= stats.overall.hitRate %></p>
+        </div>
+        <div class="text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-400">Total Hits</p>
+          <p class="text-3xl font-bold text-blue-600" id="totalHits"><%= stats.overall.totalHits %></p>
+        </div>
+        <div class="text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-400">Total Misses</p>
+          <p class="text-3xl font-bold text-orange-600" id="totalMisses"><%= stats.overall.totalMisses %></p>
+        </div>
+        <div class="text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-400">Total Requests</p>
+          <p class="text-3xl font-bold text-gray-700 dark:text-gray-300" id="totalRequests"><%= stats.overall.totalRequests %></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed Cache Statistics -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <!-- Tags Cache -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"></path>
+          </svg>
+          Tags Cache
+        </h3>
+        <dl class="space-y-2">
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Size:</dt>
+            <dd class="text-sm font-semibold text-gray-900 dark:text-white" id="tagsSize"><%= stats.tags.size %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Age:</dt>
+            <dd class="text-sm font-semibold text-gray-900 dark:text-white" id="tagsAge"><%= stats.tags.age %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Status:</dt>
+            <dd class="text-sm font-semibold <%= stats.tags.valid ? 'text-green-600' : 'text-red-600' %>" id="tagsStatus">
+              <%= stats.tags.valid ? 'Valid' : 'Expired' %>
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Hits:</dt>
+            <dd class="text-sm font-semibold text-blue-600" id="tagsHits"><%= stats.tags.hits %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Misses:</dt>
+            <dd class="text-sm font-semibold text-orange-600" id="tagsMisses"><%= stats.tags.misses %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Refreshes:</dt>
+            <dd class="text-sm font-semibold text-gray-700 dark:text-gray-300" id="tagsRefreshes"><%= stats.tags.refreshes %></dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Correspondents Cache -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"></path>
+          </svg>
+          Correspondents Cache
+        </h3>
+        <dl class="space-y-2">
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Size:</dt>
+            <dd class="text-sm font-semibold text-gray-900 dark:text-white" id="correspondentsSize"><%= stats.correspondents.size %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Age:</dt>
+            <dd class="text-sm font-semibold text-gray-900 dark:text-white" id="correspondentsAge"><%= stats.correspondents.age %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Status:</dt>
+            <dd class="text-sm font-semibold <%= stats.correspondents.valid ? 'text-green-600' : 'text-red-600' %>" id="correspondentsStatus">
+              <%= stats.correspondents.valid ? 'Valid' : 'Expired' %>
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Hits:</dt>
+            <dd class="text-sm font-semibold text-blue-600" id="correspondentsHits"><%= stats.correspondents.hits %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Misses:</dt>
+            <dd class="text-sm font-semibold text-orange-600" id="correspondentsMisses"><%= stats.correspondents.misses %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Refreshes:</dt>
+            <dd class="text-sm font-semibold text-gray-700 dark:text-gray-300" id="correspondentsRefreshes"><%= stats.correspondents.refreshes %></dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Document Types Cache -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"></path>
+          </svg>
+          Document Types Cache
+        </h3>
+        <dl class="space-y-2">
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Size:</dt>
+            <dd class="text-sm font-semibold text-gray-900 dark:text-white" id="documentTypesSize"><%= stats.documentTypes.size %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Age:</dt>
+            <dd class="text-sm font-semibold text-gray-900 dark:text-white" id="documentTypesAge"><%= stats.documentTypes.age %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Status:</dt>
+            <dd class="text-sm font-semibold <%= stats.documentTypes.valid ? 'text-green-600' : 'text-red-600' %>" id="documentTypesStatus">
+              <%= stats.documentTypes.valid ? 'Valid' : 'Expired' %>
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Hits:</dt>
+            <dd class="text-sm font-semibold text-blue-600" id="documentTypesHits"><%= stats.documentTypes.hits %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Misses:</dt>
+            <dd class="text-sm font-semibold text-orange-600" id="documentTypesMisses"><%= stats.documentTypes.misses %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-600 dark:text-gray-400">Refreshes:</dt>
+            <dd class="text-sm font-semibold text-gray-700 dark:text-gray-300" id="documentTypesRefreshes"><%= stats.documentTypes.refreshes %></dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+
+    <!-- Last Scan Info -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Scanning Information</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Last Scan Timestamp</p>
+          <p class="text-lg font-semibold text-gray-900 dark:text-white" id="lastScan">
+            <%= lastScan || 'Never' %>
+          </p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Scan Mode</p>
+          <p class="text-lg font-semibold text-gray-900 dark:text-white">
+            <%= incrementalScanEnabled ? 'Incremental' : 'Full' %>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Auto-refresh stats every 30 seconds
+setInterval(refreshStats, 30000);
+
+async function refreshStats() {
+  try {
+    const response = await fetch('/api/cache/stats');
+    const data = await response.json();
+    
+    if (data.success) {
+      updateStatsUI(data.stats);
+    }
+  } catch (error) {
+    console.error('Error refreshing stats:', error);
+  }
+}
+
+function updateStatsUI(stats) {
+  // Overall stats
+  document.getElementById('hitRate').textContent = stats.overall.hitRate;
+  document.getElementById('totalHits').textContent = stats.overall.totalHits;
+  document.getElementById('totalMisses').textContent = stats.overall.totalMisses;
+  document.getElementById('totalRequests').textContent = stats.overall.totalRequests;
+  
+  // Tags
+  document.getElementById('tagsSize').textContent = stats.tags.size;
+  document.getElementById('tagsAge').textContent = stats.tags.age;
+  document.getElementById('tagsHits').textContent = stats.tags.hits;
+  document.getElementById('tagsMisses').textContent = stats.tags.misses;
+  document.getElementById('tagsRefreshes').textContent = stats.tags.refreshes;
+  
+  // Correspondents
+  document.getElementById('correspondentsSize').textContent = stats.correspondents.size;
+  document.getElementById('correspondentsAge').textContent = stats.correspondents.age;
+  document.getElementById('correspondentsHits').textContent = stats.correspondents.hits;
+  document.getElementById('correspondentsMisses').textContent = stats.correspondents.misses;
+  document.getElementById('correspondentsRefreshes').textContent = stats.correspondents.refreshes;
+  
+  // Document Types
+  document.getElementById('documentTypesSize').textContent = stats.documentTypes.size;
+  document.getElementById('documentTypesAge').textContent = stats.documentTypes.age;
+  document.getElementById('documentTypesHits').textContent = stats.documentTypes.hits;
+  document.getElementById('documentTypesMisses').textContent = stats.documentTypes.misses;
+  document.getElementById('documentTypesRefreshes').textContent = stats.documentTypes.refreshes;
+}
+
+async function refreshCache() {
+  if (!confirm('Refresh all caches from Paperless-ngx API?')) return;
+  
+  try {
+    const response = await fetch('/api/cache/refresh', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('✅ Caches refreshed successfully!');
+      updateStatsUI(data.stats);
+    } else {
+      alert('❌ Error: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Error refreshing cache:', error);
+    alert('❌ Error refreshing cache');
+  }
+}
+
+async function clearCache() {
+  if (!confirm('Clear all caches? They will be reloaded on next request.')) return;
+  
+  try {
+    const response = await fetch('/api/cache/clear', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('✅ Caches cleared successfully!');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      alert('❌ Error: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    alert('❌ Error clearing cache');
+  }
+}
+
+async function triggerScan() {
+  if (!confirm('Trigger immediate document scan?')) return;
+  
+  try {
+    const response = await fetch('/api/scan/trigger', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('✅ Scan triggered! Check server logs for progress.');
+    } else {
+      alert('❌ Error: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Error triggering scan:', error);
+    alert('❌ Error triggering scan');
+  }
+}
+
+async function resetStats() {
+  if (!confirm('Reset all cache statistics?')) return;
+  
+  try {
+    const response = await fetch('/api/cache/reset-stats', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('✅ Statistics reset successfully!');
+      updateStatsUI(data.stats);
+    } else {
+      alert('❌ Error: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Error resetting stats:', error);
+    alert('❌ Error resetting stats');
+  }
+}
+</script>
+` }) %>

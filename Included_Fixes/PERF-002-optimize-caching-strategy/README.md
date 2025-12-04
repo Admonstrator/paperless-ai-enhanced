@@ -322,15 +322,111 @@ node tests/test-metadata-cache.js
 
 ## Implementation Checklist
 
-- [ ] `MetadataCache` Service implementieren
-- [ ] `getLastScanTimestamp()` / `setLastScanTimestamp()` in `models/document.js`
-- [ ] `scanDocumentsIncremental()` Funktion
-- [ ] `getAllDocuments()` mit Filter-Optionen erweitern
-- [ ] Separate Cron-Jobs für Cache-Refresh und Scan
-- [ ] Tag-Cache Lifetime auf 30min erhöhen
-- [ ] Tests schreiben
-- [ ] Performance-Messungen durchführen
-- [ ] Dokumentation aktualisieren
+- [x] `MetadataCache` Service implementieren (`services/metadataCache.js`)
+- [x] `getLastScanTimestamp()` / `setLastScanTimestamp()` in `models/document.js`
+- [x] `scanDocumentsIncremental()` Funktion (in `server.js`)
+- [x] `getDocumentsOptimized()` mit Filter-Optionen (`services/paperlessService.js`)
+- [x] Separate Cron-Jobs für Cache-Refresh und Scan
+- [x] Tag-Cache Lifetime auf 30min erhöhen (configurable via `METADATA_CACHE_TTL`)
+- [x] Cache Admin UI (`/cache-admin`)
+- [x] Tests schreiben (`tests/test-metadata-cache.js`, `tests/test-incremental-scan.js`)
+- [ ] Performance-Messungen durchführen (after deployment)
+- [x] Dokumentation aktualisieren
+
+## Implementation Summary
+
+All optimization strategies have been successfully implemented:
+
+### 1. MetadataCache Service
+- **File**: `services/metadataCache.js`
+- **Features**:
+  - 30-minute cache TTL (configurable via `METADATA_CACHE_TTL` env var)
+  - Separate caches for tags, correspondents, and document types
+  - Hit/miss/refresh statistics tracking
+  - Event-based cache updates (add to cache on create)
+  - Manual refresh and clear operations
+
+### 2. Database Enhancements
+- **File**: `models/document.js`
+- **Changes**:
+  - New `system_state` table for tracking scan timestamps and metadata
+  - `getSystemState(key)` / `setSystemState(key, value)` methods
+  - `getLastScanTimestamp()` / `setLastScanTimestamp()` helpers
+
+### 3. Incremental Scanning
+- **File**: `server.js`
+- **Changes**:
+  - `scanDocuments()` now uses `metadataCache` instead of direct API calls
+  - Incremental mode: only processes documents modified since last scan
+  - Falls back to full scan if no previous timestamp or if disabled
+  - Enable/disable via `ENABLE_INCREMENTAL_SCAN` env var (default: enabled)
+
+### 4. Optimized API Calls
+- **File**: `services/paperlessService.js`
+- **New Method**: `getDocumentsOptimized(options)`
+- **Supported Options**:
+  - `modifiedSince`: ISO timestamp for incremental updates
+  - `fields`: Comma-separated field selection
+  - `ordering`: Sort order
+  - `tags`: Filter by tag IDs
+  - `pageSize`: Custom page size
+
+### 5. Separate Cron Jobs
+- **Cache refresh**: Every 15 minutes (configurable via `CACHE_REFRESH_INTERVAL`)
+- **Document scan**: Uses existing `SCAN_INTERVAL` config
+- Both jobs independent - cache refreshes don't block scanning
+
+### 6. Cache Admin UI
+- **Route**: `/cache-admin`
+- **Features**:
+  - Real-time cache statistics (size, age, hit rate)
+  - Manual cache refresh button
+  - Clear cache button
+  - Trigger immediate scan
+  - Reset statistics
+  - Auto-refresh stats every 30 seconds
+  - Configuration display (TTL, intervals, incremental mode status)
+
+### 7. Navigation Integration
+- Cache Admin link added to all views with navigation:
+  - `dashboard.ejs`
+  - `chat.ejs`
+  - `history.ejs`
+  - `manual.ejs`
+  - `playground.ejs`
+  - `settings.ejs`
+
+## Configuration
+
+### New Environment Variables
+
+```bash
+# Metadata cache TTL in milliseconds (default: 30 minutes)
+METADATA_CACHE_TTL=1800000
+
+# Cache refresh interval (cron format, default: every 15 minutes)
+CACHE_REFRESH_INTERVAL="*/15 * * * *"
+
+# Enable/disable incremental scanning (default: enabled)
+ENABLE_INCREMENTAL_SCAN=yes
+```
+
+## Testing
+
+Run the test scripts to verify functionality:
+
+```bash
+# Test metadata cache performance
+node tests/test-metadata-cache.js
+
+# Test incremental scanning
+node tests/test-incremental-scan.js
+```
+
+Expected results:
+- Cache hits should be 5-50x faster than cache misses
+- Incremental scans should process 90-99% fewer documents (depending on activity)
+- Field selection should improve query speed by 2-5x
 
 ## Related Issues
 

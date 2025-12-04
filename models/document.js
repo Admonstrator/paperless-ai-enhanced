@@ -74,6 +74,16 @@ const userTable = db.prepare(`
 `);
 userTable.run();
 
+// Create system_state table for tracking scan timestamps and other system metadata
+const createSystemState = db.prepare(`
+  CREATE TABLE IF NOT EXISTS system_state (
+    id INTEGER PRIMARY KEY,
+    key TEXT UNIQUE NOT NULL,
+    value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+createSystemState.run();
 
 // Prepare statements for better performance
 const insertDocument = db.prepare(`
@@ -634,6 +644,44 @@ async getCurrentProcessingStatus() {
       };
   }
 },
+
+  // System state management for scan timestamps and other metadata
+  getSystemState(key) {
+    try {
+      const stmt = db.prepare('SELECT value, updated_at FROM system_state WHERE key = ?');
+      const result = stmt.get(key);
+      return result ? { value: result.value, updatedAt: result.updated_at } : null;
+    } catch (error) {
+      console.error(`[ERROR] getting system state for key ${key}:`, error);
+      return null;
+    }
+  },
+
+  setSystemState(key, value) {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO system_state (key, value, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = CURRENT_TIMESTAMP
+      `);
+      stmt.run(key, value);
+      return true;
+    } catch (error) {
+      console.error(`[ERROR] setting system state for key ${key}:`, error);
+      return false;
+    }
+  },
+
+  getLastScanTimestamp() {
+    const state = this.getSystemState('last_scan_timestamp');
+    return state ? state.value : null;
+  },
+
+  setLastScanTimestamp(timestamp) {
+    return this.setSystemState('last_scan_timestamp', timestamp || new Date().toISOString());
+  },
 
 
   // Utility method to close the database connection

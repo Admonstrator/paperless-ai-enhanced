@@ -8,6 +8,7 @@ const AIServiceFactory = require('./services/aiServiceFactory');
 const documentModel = require('./models/document');
 const setupService = require('./services/setupService');
 const setupRoutes = require('./routes/setup');
+const metadataCache = require('./services/metadataCache');
 
 // Add environment variables for RAG service if not already set
 process.env.RAG_SERVICE_URL = process.env.RAG_SERVICE_URL || 'http://localhost:8000';
@@ -373,13 +374,21 @@ async function scanInitial() {
       return;
     }
 
-    let [existingTags, documents, ownUserId, existingCorrespondentList, existingDocumentTypes] = await Promise.all([
-      paperlessService.getTags(),
-      paperlessService.getAllDocuments(),
+    console.log('[SCAN] Starting initial scan...');
+    htmlLogger.log('[SCAN] Starting initial scan...', 'info');
+
+    // Use metadata cache instead of direct API calls
+    let [existingTags, ownUserId, existingCorrespondentList, existingDocumentTypes] = await Promise.all([
+      metadataCache.ensureTags(paperlessService),
       paperlessService.getOwnUserID(),
-      paperlessService.listCorrespondentsNames(),
-      paperlessService.listDocumentTypesNames()
+      metadataCache.ensureCorrespondents(paperlessService),
+      metadataCache.ensureDocumentTypes(paperlessService)
     ]);
+
+    // Get all documents for initial scan
+    const documents = await paperlessService.getAllDocuments();
+    console.log(`[SCAN] Found ${documents.length} documents to process`);
+
     //get existing correspondent list
     existingCorrespondentList = existingCorrespondentList.map(correspondent => correspondent.name);
     let existingDocumentTypesList = existingDocumentTypes.map(docType => docType.name);
@@ -399,8 +408,14 @@ async function scanInitial() {
         console.error(`[ERROR] processing document ${doc.id}:`, error);
       }
     }
+
+    // Update last scan timestamp
+    documentModel.setLastScanTimestamp(new Date().toISOString());
+    console.log('[SCAN] Initial scan completed');
+    htmlLogger.log('[SCAN] Initial scan completed', 'success');
   } catch (error) {
     console.error('[ERROR] during initial document scan:', error);
+    htmlLogger.log(`[ERROR] during initial document scan: ${error.message}`, 'error');
   }
 }
 
@@ -412,13 +427,35 @@ async function scanDocuments() {
 
   runningTask = true;
   try {
-    let [existingTags, documents, ownUserId, existingCorrespondentList, existingDocumentTypes] = await Promise.all([
-      paperlessService.getTags(),
-      paperlessService.getAllDocuments(),
+    console.log('[SCAN] Starting document scan...');
+    htmlLogger.log('[SCAN] Starting document scan...', 'info');
+
+    // Use metadata cache instead of direct API calls (HUGE performance gain!)
+    let [existingTags, ownUserId, existingCorrespondentList, existingDocumentTypes] = await Promise.all([
+      metadataCache.ensureTags(paperlessService),
       paperlessService.getOwnUserID(),
-      paperlessService.listCorrespondentsNames(),
-      paperlessService.listDocumentTypesNames()
+      metadataCache.ensureCorrespondents(paperlessService),
+      metadataCache.ensureDocumentTypes(paperlessService)
     ]);
+
+    // INCREMENTAL SCANNING: Only get documents modified since last scan
+    const lastScan = documentModel.getLastScanTimestamp();
+    let documents;
+    
+    if (lastScan && process.env.ENABLE_INCREMENTAL_SCAN !== 'no') {
+      console.log(`[SCAN] Incremental scan enabled. Last scan: ${lastScan}`);
+      documents = await paperlessService.getDocumentsOptimized({
+        modifiedSince: lastScan,
+        fields: 'id,title,created,modified,tags,correspondent',
+        ordering: '-modified'
+      });
+      console.log(`[SCAN] Found ${documents.length} documents modified since last scan`);
+      htmlLogger.log(`[SCAN] Incremental scan: ${documents.length} modified documents`, 'info');
+    } else {
+      console.log('[SCAN] Full scan mode (incremental scan disabled or first run)');
+      documents = await paperlessService.getAllDocuments();
+      console.log(`[SCAN] Found ${documents.length} documents to process`);
+    }
 
     //get existing correspondent list
     existingCorrespondentList = existingCorrespondentList.map(correspondent => correspondent.name);
@@ -429,6 +466,7 @@ async function scanDocuments() {
     // Extract tag names from tag objects
     const existingTagNames = existingTags.map(tag => tag.name);
 
+    let processedCount = 0;
     for (const doc of documents) {
       try {
         const result = await processDocument(doc, existingTagNames, existingCorrespondentList, existingDocumentTypesList, ownUserId);
@@ -437,12 +475,19 @@ async function scanDocuments() {
         const { analysis, originalData } = result;
         const updateData = await buildUpdateData(analysis, doc);
         await saveDocumentChanges(doc.id, updateData, analysis, originalData);
+        processedCount++;
       } catch (error) {
         console.error(`[ERROR] processing document ${doc.id}:`, error);
       }
     }
+
+    // Update last scan timestamp
+    documentModel.setLastScanTimestamp(new Date().toISOString());
+    console.log(`[SCAN] Scan completed. Processed ${processedCount}/${documents.length} documents`);
+    htmlLogger.log(`[SCAN] Scan completed. Processed ${processedCount}/${documents.length} documents`, 'success');
   } catch (error) {
     console.error('[ERROR]  during document scan:', error);
+    htmlLogger.log(`[ERROR] during document scan: ${error.message}`, 'error');
   } finally {
     runningTask = false;
     console.log('[INFO] Task completed');
@@ -592,10 +637,26 @@ async function startScanning() {
     if(config.disableAutomaticProcessing != 'yes') {
       await scanInitial();
   
+      // OPTIMIZATION: Separate cron jobs for cache refresh and document scanning
+      
+      // Cache refresh cron (every 15 minutes by default)
+      const cacheRefreshInterval = process.env.CACHE_REFRESH_INTERVAL || '*/15 * * * *';
+      cron.schedule(cacheRefreshInterval, async () => {
+        try {
+          console.log(`[CACHE] Starting scheduled cache refresh at ${new Date().toISOString()}`);
+          await metadataCache.refreshAll(paperlessService);
+        } catch (error) {
+          console.error('[ERROR] in cache refresh cron:', error);
+        }
+      });
+      console.log(`Cache refresh scheduled: ${cacheRefreshInterval}`);
+      
+      // Document scan cron (uses cached metadata)
       cron.schedule(config.scanInterval, async () => {
-        console.log(`Starting scheduled scan at ${new Date().toISOString()}`);
+        console.log(`[SCAN] Starting scheduled scan at ${new Date().toISOString()}`);
         await scanDocuments();
       });
+      console.log(`Document scan scheduled: ${config.scanInterval}`);
     }
   } catch (error) {
     console.error('[ERROR] in startScanning:', error);

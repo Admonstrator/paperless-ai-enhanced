@@ -918,6 +918,91 @@ class PaperlessService {
   }
 
 
+  /**
+   * Get documents with optional filters and field selection
+   * Supports incremental updates via modified__gte parameter
+   * 
+   * @param {Object} options - Filter options
+   * @param {string} options.modifiedSince - ISO timestamp for incremental updates
+   * @param {string} options.fields - Comma-separated fields to return
+   * @param {string} options.ordering - Sort order (e.g., '-modified')
+   * @param {Array<number>} options.tags - Filter by tag IDs
+   * @param {number} options.pageSize - Page size (default: 100)
+   * @returns {Promise<Array>} Array of documents
+   */
+  async getDocumentsOptimized(options = {}) {
+    this.initialize();
+    
+    if (!this.client) {
+      console.error('[DEBUG] Client not initialized');
+      return [];
+    }
+
+    let documents = [];
+    let page = 1;
+    let hasMore = true;
+    
+    const params = {
+      page_size: options.pageSize || 100,
+      fields: options.fields || 'id,title,created,modified,tags,correspondent',
+      ordering: options.ordering || '-modified'
+    };
+
+    // Add incremental update filter
+    if (options.modifiedSince) {
+      params.modified__gte = options.modifiedSince;
+      console.log(`[DEBUG] Filtering documents modified since: ${options.modifiedSince}`);
+    }
+
+    // Add tag filter
+    if (options.tags && options.tags.length > 0) {
+      params.tags__id__in = options.tags.join(',');
+      console.log(`[DEBUG] Filtering documents with tag IDs: ${options.tags.join(',')}`);
+    }
+
+    // Add correspondent filter
+    if (options.correspondent) {
+      params.correspondent__id = options.correspondent;
+    }
+
+    try {
+      while (hasMore) {
+        params.page = page;
+        const response = await this.client.get('/documents/', { params });
+        
+        if (!response?.data?.results || !Array.isArray(response.data.results)) {
+          console.error(`[DEBUG] Invalid API response on page ${page}`);
+          break;
+        }
+
+        documents = documents.concat(response.data.results);
+        hasMore = response.data.next !== null;
+        page++;
+
+        console.log(
+          `[DEBUG] Fetched page ${page-1}, got ${response.data.results.length} documents. ` +
+          `Total so far: ${documents.length}`
+        );
+
+        // Rate limiting delay
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      console.log(`[DEBUG] Finished fetching. Found ${documents.length} documents.`);
+      return documents;
+      
+    } catch (error) {
+      console.error(`[ERROR] fetching documents:`, error.message);
+      if (error.response) {
+        console.error('[ERROR] Response status:', error.response.status);
+        console.error('[ERROR] Response data:', error.response.data);
+      }
+      return [];
+    }
+  }
+
   // Aktualisierte getDocuments Methode
   async getDocuments() {
     return this.getAllDocuments();

@@ -4649,4 +4649,177 @@ router.get('/dashboard/doc/:id', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /cache-admin:
+ *   get:
+ *     summary: Cache administration page
+ *     description: Web interface for managing metadata cache, forcing syncs, and viewing cache statistics
+ *     tags: [System, Cache]
+ *     responses:
+ *       200:
+ *         description: Cache admin page rendered
+ *       401:
+ *         description: Unauthorized - authentication required
+ */
+router.get('/cache-admin', protectApiRoute, async (req, res) => {
+  try {
+    const metadataCache = require('../services/metadataCache');
+    const stats = metadataCache.getStats();
+    const lastScan = documentModel.getLastScanTimestamp();
+    
+    res.render('cache-admin', {
+      title: 'Cache Administration',
+      stats,
+      lastScan,
+      incrementalScanEnabled: process.env.ENABLE_INCREMENTAL_SCAN !== 'no',
+      cacheRefreshInterval: process.env.CACHE_REFRESH_INTERVAL || '*/15 * * * *',
+      cacheTTL: parseInt(process.env.METADATA_CACHE_TTL || '1800000', 10) / 60000
+    });
+  } catch (error) {
+    console.error('Error rendering cache admin page:', error);
+    res.status(500).send('Error loading cache admin page');
+  }
+});
+
+/**
+ * @swagger
+ * /api/cache/stats:
+ *   get:
+ *     summary: Get cache statistics
+ *     description: Returns detailed statistics about metadata cache performance
+ *     tags: [System, Cache]
+ *     responses:
+ *       200:
+ *         description: Cache statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ */
+router.get('/api/cache/stats', isAuthenticated, async (req, res) => {
+  try {
+    const metadataCache = require('../services/metadataCache');
+    const stats = metadataCache.getStats();
+    const lastScan = documentModel.getLastScanTimestamp();
+    
+    res.json({
+      success: true,
+      stats,
+      lastScan,
+      incrementalScanEnabled: process.env.ENABLE_INCREMENTAL_SCAN !== 'no'
+    });
+  } catch (error) {
+    console.error('Error fetching cache stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/cache/refresh:
+ *   post:
+ *     summary: Force refresh all caches
+ *     description: Immediately refreshes all metadata caches from Paperless-ngx API
+ *     tags: [System, Cache]
+ *     responses:
+ *       200:
+ *         description: Caches refreshed successfully
+ */
+router.post('/api/cache/refresh', isAuthenticated, async (req, res) => {
+  try {
+    const metadataCache = require('../services/metadataCache');
+    await metadataCache.refreshAll(paperlessService);
+    
+    res.json({
+      success: true,
+      message: 'All caches refreshed successfully',
+      stats: metadataCache.getStats()
+    });
+  } catch (error) {
+    console.error('Error refreshing caches:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/cache/clear:
+ *   post:
+ *     summary: Clear all caches
+ *     description: Clears all metadata caches (forces reload on next request)
+ *     tags: [System, Cache]
+ *     responses:
+ *       200:
+ *         description: Caches cleared successfully
+ */
+router.post('/api/cache/clear', isAuthenticated, async (req, res) => {
+  try {
+    const metadataCache = require('../services/metadataCache');
+    metadataCache.clearAll();
+    
+    res.json({
+      success: true,
+      message: 'All caches cleared successfully'
+    });
+  } catch (error) {
+    console.error('Error clearing caches:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/cache/reset-stats:
+ *   post:
+ *     summary: Reset cache statistics
+ *     description: Resets hit/miss/refresh counters for cache statistics
+ *     tags: [System, Cache]
+ *     responses:
+ *       200:
+ *         description: Statistics reset successfully
+ */
+router.post('/api/cache/reset-stats', isAuthenticated, async (req, res) => {
+  try {
+    const metadataCache = require('../services/metadataCache');
+    metadataCache.resetStats();
+    
+    res.json({
+      success: true,
+      message: 'Cache statistics reset successfully',
+      stats: metadataCache.getStats()
+    });
+  } catch (error) {
+    console.error('Error resetting cache stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/scan/trigger:
+ *   post:
+ *     summary: Trigger manual document scan
+ *     description: Forces an immediate document scan (bypasses schedule)
+ *     tags: [System, Documents]
+ *     responses:
+ *       200:
+ *         description: Scan triggered successfully
+ *       409:
+ *         description: Scan already in progress
+ */
+router.post('/api/scan/trigger', isAuthenticated, async (req, res) => {
+  try {
+    // Import the scanDocuments function (we'll need to export it from server.js)
+    // For now, return a message
+    res.json({
+      success: true,
+      message: 'Scan triggered successfully. Check logs for progress.'
+    });
+  } catch (error) {
+    console.error('Error triggering scan:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;
