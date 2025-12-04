@@ -23,6 +23,7 @@ Each subdirectory represents an integrated fix with:
 | ID | Title | Status | Integration Date |
 |----|-------|--------|------------------|
 | [PERF-001](PERF-001-history-pagination/) | History table SQL pagination & caching | ✅ Applied | 2025-12-03 |
+| [PERF-002](PERF-002-optimize-caching-strategy/) | Optimize metadata caching & incremental scanning | 📋 Documented | 2025-12-04 |
 
 ### Community Patches
 

@@ -29,6 +29,28 @@ All config loads from `data/.env` via `config/config.js`. Key patterns:
 - Feature toggles: `activateTagging`, `activateCorrespondents`, etc.
 - AI restrictions: `restrictToExistingTags`, `restrictToExistingCorrespondents`
 
+### Caching Strategy (PERF-002)
+**Critical Issue**: Current implementation reloads ALL metadata on every scan cycle.
+
+**Problems**:
+- `scanDocuments()` calls `getTags()`, `getAllDocuments()`, `listCorrespondentsNames()` on every scan (30min default)
+- Tag cache has 3-second TTL - effectively no caching for scan workflows
+- No incremental updates - always full reload
+- 1000 docs + 200 tags = ~72,000 API calls/day
+
+**Paperless-API features to use**:
+- `modified__gte` parameter for incremental document updates
+- `fields` parameter to limit returned data (e.g., `fields=id,title,modified`)
+- `page_size=100` for efficient pagination
+- Count queries: `GET /api/tags/?count=true` for quick counts
+
+**Optimization patterns** (see `Included_Fixes/PERF-002-optimize-caching-strategy/`):
+1. Metadata cache with 30-minute TTL (not 3 seconds)
+2. Separate cron job for cache refresh (independent of document scan)
+3. Incremental scanning using `modified__gte` filter
+4. Track last scan timestamp in database
+5. Event-based cache invalidation (update cache on create, not invalidate)
+
 ### Database Schema
 5 key tables in `data/documents.db` (see `models/document.js`):
 - `processed_documents` - Tracks processed docs (document_id, title)

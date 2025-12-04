@@ -63,6 +63,7 @@ All fixes are documented in [`Included_Fixes/`](Included_Fixes/) with detailed i
 | **Upstream PRs** | [PR-772](Included_Fixes/PR-772-infinite-retry-fix/) | Fix infinite retry loop | ✅ Merged |
 | | [PR-747](Included_Fixes/PR-747-history-cleanup/) | History validation tool | ✅ Merged |
 | **Performance** | [PERF-001](Included_Fixes/PERF-001-history-pagination/) | SQL pagination & tag caching | ✅ Applied |
+| | [PERF-002](Included_Fixes/PERF-002-optimize-caching-strategy/) | Metadata caching & incremental scanning | 📋 Documented |
 | **Security** | [SEC-001](Included_Fixes/SEC-001-ssrf-code-injection/) | SSRF & code injection fixes | ✅ Applied |
 | **Docker** | [DOCKER-001](Included_Fixes/DOCKER-001-optimize-images/) | Optimized Docker images | ✅ Applied |
 | **Dependencies** | [DEP-001](Included_Fixes/DEP-001-remove-sqlite3/) | Remove unused sqlite3 | ✅ Applied |
